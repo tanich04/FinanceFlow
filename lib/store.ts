@@ -40,6 +40,10 @@ interface FinanceStore {
   updateTransaction: (id: string, transaction: Partial<Transaction>) => void
   deleteTransaction: (id: string) => void
   
+  // Selected transaction for detail view
+  selectedTransaction: Transaction | null
+  setSelectedTransaction: (transaction: Transaction | null) => void
+  
   // Role
   role: UserRole
   setRole: (role: UserRole) => void
@@ -130,9 +134,13 @@ export const useFinanceStore = create<FinanceStore>()(
       deleteTransaction: (id) => {
         set((state) => ({
           transactions: state.transactions.filter((t) => t.id !== id),
+          selectedTransaction: state.selectedTransaction?.id === id ? null : state.selectedTransaction,
         }))
         get().showToast('Transaction deleted', 'info')
       },
+      
+      selectedTransaction: null,
+      setSelectedTransaction: (transaction) => set({ selectedTransaction: transaction }),
       
       role: 'admin',
       setRole: (role) => set({ role }),
