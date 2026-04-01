@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 
 export type TransactionType = 'income' | 'expense'
 export type UserRole = 'viewer' | 'admin'
+export type Theme = 'light' | 'dark'
 export type TransactionCategory = 
   | 'salary' 
   | 'freelance' 
@@ -35,13 +36,18 @@ export interface FilterState {
 interface FinanceStore {
   // Transactions
   transactions: Transaction[]
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => string
   updateTransaction: (id: string, transaction: Partial<Transaction>) => void
   deleteTransaction: (id: string) => void
   
   // Role
   role: UserRole
   setRole: (role: UserRole) => void
+  
+  // Theme
+  theme: Theme
+  setTheme: (theme: Theme) => void
+  toggleTheme: () => void
   
   // Filters
   filters: FilterState
@@ -51,6 +57,16 @@ interface FinanceStore {
   // UI State
   activeView: 'dashboard' | 'transactions' | 'insights'
   setActiveView: (view: 'dashboard' | 'transactions' | 'insights') => void
+  
+  // Loading states for optimistic UI
+  pendingTransactions: Set<string>
+  addPendingTransaction: (id: string) => void
+  removePendingTransaction: (id: string) => void
+  
+  // Toast notifications
+  toast: { message: string; type: 'success' | 'error' | 'info' } | null
+  showToast: (message: string, type: 'success' | 'error' | 'info') => void
+  clearToast: () => void
 }
 
 const defaultFilters: FilterState = {
@@ -87,31 +103,54 @@ const mockTransactions: Transaction[] = [
 
 export const useFinanceStore = create<FinanceStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       transactions: mockTransactions,
       
-      addTransaction: (transaction) =>
+      addTransaction: (transaction) => {
+        const id = crypto.randomUUID()
         set((state) => ({
           transactions: [
-            { ...transaction, id: crypto.randomUUID() },
+            { ...transaction, id },
             ...state.transactions,
           ],
-        })),
+        }))
+        get().showToast('Transaction added successfully', 'success')
+        return id
+      },
       
-      updateTransaction: (id, updatedTransaction) =>
+      updateTransaction: (id, updatedTransaction) => {
         set((state) => ({
           transactions: state.transactions.map((t) =>
             t.id === id ? { ...t, ...updatedTransaction } : t
           ),
-        })),
+        }))
+        get().showToast('Transaction updated', 'success')
+      },
       
-      deleteTransaction: (id) =>
+      deleteTransaction: (id) => {
         set((state) => ({
           transactions: state.transactions.filter((t) => t.id !== id),
-        })),
+        }))
+        get().showToast('Transaction deleted', 'info')
+      },
       
       role: 'admin',
       setRole: (role) => set({ role }),
+      
+      theme: 'dark',
+      setTheme: (theme) => {
+        set({ theme })
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.toggle('dark', theme === 'dark')
+        }
+      },
+      toggleTheme: () => {
+        const newTheme = get().theme === 'dark' ? 'light' : 'dark'
+        set({ theme: newTheme })
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.toggle('dark', newTheme === 'dark')
+        }
+      },
       
       filters: defaultFilters,
       setFilters: (filters) =>
@@ -122,9 +161,37 @@ export const useFinanceStore = create<FinanceStore>()(
       
       activeView: 'dashboard',
       setActiveView: (activeView) => set({ activeView }),
+      
+      // Optimistic UI states
+      pendingTransactions: new Set(),
+      addPendingTransaction: (id) => 
+        set((state) => ({
+          pendingTransactions: new Set([...state.pendingTransactions, id])
+        })),
+      removePendingTransaction: (id) =>
+        set((state) => {
+          const newSet = new Set(state.pendingTransactions)
+          newSet.delete(id)
+          return { pendingTransactions: newSet }
+        }),
+      
+      // Toast
+      toast: null,
+      showToast: (message, type) => {
+        set({ toast: { message, type } })
+        setTimeout(() => set({ toast: null }), 3000)
+      },
+      clearToast: () => set({ toast: null }),
     }),
     {
       name: 'finance-dashboard-storage',
+      partialize: (state) => ({
+        transactions: state.transactions,
+        role: state.role,
+        theme: state.theme,
+        filters: state.filters,
+        activeView: state.activeView,
+      }),
     }
   )
 )
@@ -177,4 +244,20 @@ export const getCategoryColor = (category: TransactionCategory): string => {
     other: '#94a3b8',
   }
   return colors[category]
+}
+
+export const getCategoryDescription = (category: TransactionCategory): string => {
+  const descriptions: Record<TransactionCategory, string> = {
+    salary: 'Regular employment income',
+    freelance: 'Independent contractor work',
+    investment: 'Returns from investments',
+    food: 'Groceries and dining',
+    transport: 'Travel and commuting',
+    entertainment: 'Movies, games, events',
+    shopping: 'Retail purchases',
+    utilities: 'Bills and services',
+    healthcare: 'Medical expenses',
+    other: 'Miscellaneous items',
+  }
+  return descriptions[category]
 }

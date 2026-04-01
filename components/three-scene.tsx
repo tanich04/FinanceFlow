@@ -1,16 +1,18 @@
 'use client'
 
-import { useRef, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { Float, MeshDistortMaterial, Sphere, Box, Torus } from '@react-three/drei'
+import { useRef, useMemo, useEffect, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Float, MeshDistortMaterial, Sphere, Box, Torus, Stars } from '@react-three/drei'
 import * as THREE from 'three'
+import { useFinanceStore } from '@/lib/store'
 
-function FloatingOrb({ position, color, speed = 1, distort = 0.4, size = 1 }: {
+function FloatingOrb({ position, color, speed = 1, distort = 0.4, size = 1, isDark }: {
   position: [number, number, number]
   color: string
   speed?: number
   distort?: number
   size?: number
+  isDark: boolean
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   
@@ -29,20 +31,21 @@ function FloatingOrb({ position, color, speed = 1, distort = 0.4, size = 1 }: {
           attach="material"
           distort={distort}
           speed={2}
-          roughness={0.2}
-          metalness={0.8}
+          roughness={isDark ? 0.2 : 0.4}
+          metalness={isDark ? 0.8 : 0.6}
           transparent
-          opacity={0.7}
+          opacity={isDark ? 0.7 : 0.5}
         />
       </Sphere>
     </Float>
   )
 }
 
-function FloatingCube({ position, color, speed = 1 }: {
+function FloatingCube({ position, color, speed = 1, isDark }: {
   position: [number, number, number]
   color: string
   speed?: number
+  isDark: boolean
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   
@@ -59,19 +62,20 @@ function FloatingCube({ position, color, speed = 1 }: {
         <meshStandardMaterial
           color={color}
           transparent
-          opacity={0.5}
-          roughness={0.1}
-          metalness={0.9}
+          opacity={isDark ? 0.5 : 0.4}
+          roughness={isDark ? 0.1 : 0.3}
+          metalness={isDark ? 0.9 : 0.7}
         />
       </Box>
     </Float>
   )
 }
 
-function FloatingRing({ position, color, speed = 1 }: {
+function FloatingRing({ position, color, speed = 1, isDark }: {
   position: [number, number, number]
   color: string
   speed?: number
+  isDark: boolean
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
   
@@ -88,16 +92,16 @@ function FloatingRing({ position, color, speed = 1 }: {
         <meshStandardMaterial
           color={color}
           transparent
-          opacity={0.6}
-          roughness={0.1}
-          metalness={0.9}
+          opacity={isDark ? 0.6 : 0.4}
+          roughness={isDark ? 0.1 : 0.3}
+          metalness={isDark ? 0.9 : 0.7}
         />
       </Torus>
     </Float>
   )
 }
 
-function Particles({ count = 200 }) {
+function Particles({ count = 200, isDark }: { count?: number; isDark: boolean }) {
   const particlesRef = useRef<THREE.Points>(null)
   
   const positions = useMemo(() => {
@@ -129,68 +133,101 @@ function Particles({ count = 200 }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.03}
-        color="#2dd4bf"
+        color={isDark ? "#2dd4bf" : "#0d9488"}
         transparent
-        opacity={0.6}
+        opacity={isDark ? 0.6 : 0.4}
         sizeAttenuation
       />
     </points>
   )
 }
 
-function GridFloor() {
+function GridFloor({ isDark }: { isDark: boolean }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4, 0]}>
       <planeGeometry args={[50, 50, 50, 50]} />
       <meshBasicMaterial
-        color="#2dd4bf"
+        color={isDark ? "#2dd4bf" : "#0d9488"}
         wireframe
         transparent
-        opacity={0.1}
+        opacity={isDark ? 0.1 : 0.05}
       />
     </mesh>
   )
 }
 
-function Scene() {
+function BackgroundColor({ isDark }: { isDark: boolean }) {
+  const { scene } = useThree()
+  
+  useEffect(() => {
+    if (isDark) {
+      scene.background = new THREE.Color('#0f0f1a')
+    } else {
+      scene.background = new THREE.Color('#f0f9ff')
+    }
+  }, [isDark, scene])
+  
+  return null
+}
+
+function Scene({ isDark }: { isDark: boolean }) {
+  const primaryColor = isDark ? '#2dd4bf' : '#0d9488'
+  const accentColor = isDark ? '#ec4899' : '#db2777'
+  const tertiaryColor = isDark ? '#a78bfa' : '#8b5cf6'
+  
   return (
     <>
-      <ambientLight intensity={0.3} />
-      <directionalLight position={[10, 10, 5]} intensity={0.5} color="#ffffff" />
-      <pointLight position={[-10, -10, -5]} intensity={0.3} color="#2dd4bf" />
-      <pointLight position={[10, -10, 5]} intensity={0.3} color="#ec4899" />
+      <BackgroundColor isDark={isDark} />
+      
+      <ambientLight intensity={isDark ? 0.3 : 0.5} />
+      <directionalLight position={[10, 10, 5]} intensity={isDark ? 0.5 : 0.7} color="#ffffff" />
+      <pointLight position={[-10, -10, -5]} intensity={isDark ? 0.3 : 0.2} color={primaryColor} />
+      <pointLight position={[10, -10, 5]} intensity={isDark ? 0.3 : 0.2} color={accentColor} />
+      
+      {/* Stars only in dark mode */}
+      {isDark && <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />}
       
       {/* Main floating elements */}
-      <FloatingOrb position={[-4, 2, -3]} color="#2dd4bf" speed={1.2} distort={0.5} size={1.5} />
-      <FloatingOrb position={[4, -1, -5]} color="#ec4899" speed={0.8} distort={0.3} size={1.2} />
-      <FloatingOrb position={[0, 3, -8]} color="#a78bfa" speed={1} distort={0.4} size={2} />
+      <FloatingOrb position={[-4, 2, -3]} color={primaryColor} speed={1.2} distort={0.5} size={1.5} isDark={isDark} />
+      <FloatingOrb position={[4, -1, -5]} color={accentColor} speed={0.8} distort={0.3} size={1.2} isDark={isDark} />
+      <FloatingOrb position={[0, 3, -8]} color={tertiaryColor} speed={1} distort={0.4} size={2} isDark={isDark} />
       
       {/* Cubes */}
-      <FloatingCube position={[-3, -2, -4]} color="#22d3ee" speed={1.5} />
-      <FloatingCube position={[5, 2, -6]} color="#fbbf24" speed={1.2} />
+      <FloatingCube position={[-3, -2, -4]} color={isDark ? '#22d3ee' : '#06b6d4'} speed={1.5} isDark={isDark} />
+      <FloatingCube position={[5, 2, -6]} color={isDark ? '#fbbf24' : '#f59e0b'} speed={1.2} isDark={isDark} />
       
       {/* Rings */}
-      <FloatingRing position={[2, 0, -5]} color="#2dd4bf" speed={1} />
-      <FloatingRing position={[-5, 1, -7]} color="#f472b6" speed={0.7} />
+      <FloatingRing position={[2, 0, -5]} color={primaryColor} speed={1} isDark={isDark} />
+      <FloatingRing position={[-5, 1, -7]} color={isDark ? '#f472b6' : '#ec4899'} speed={0.7} isDark={isDark} />
       
       {/* Particles */}
-      <Particles count={300} />
+      <Particles count={300} isDark={isDark} />
       
       {/* Grid floor */}
-      <GridFloor />
+      <GridFloor isDark={isDark} />
     </>
   )
 }
 
 export default function ThreeScene() {
+  const theme = useFinanceStore((state) => state.theme)
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  
+  if (!mounted) {
+    return <div className="fixed inset-0 -z-10 bg-background transition-colors duration-500" />
+  }
+
   return (
-    <div className="fixed inset-0 -z-10">
+    <div className="fixed inset-0 -z-10 transition-colors duration-500">
       <Canvas
         camera={{ position: [0, 0, 8], fov: 60 }}
         gl={{ antialias: true, alpha: true }}
-        style={{ background: 'linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%)' }}
       >
-        <Scene />
+        <Scene isDark={theme === 'dark'} />
       </Canvas>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useMemo, useState, useCallback } from 'react'
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import {
   Search,
   Filter,
@@ -21,15 +21,24 @@ import {
   Plus,
   Pencil,
   Trash2,
-  X,
   ChevronDown,
+  X,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   useFinanceStore,
   formatCurrency,
   formatDate,
+  getCategoryDescription,
   type TransactionCategory,
   type Transaction,
 } from '@/lib/store'
@@ -53,16 +62,182 @@ const categories: TransactionCategory[] = [
   'entertainment', 'shopping', 'utilities', 'healthcare', 'other'
 ]
 
+function FilterPill({ 
+  active, 
+  onClick, 
+  children 
+}: { 
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode 
+}) {
+  return (
+    <motion.button
+      onClick={onClick}
+      className={`filter-pill ${active ? 'filter-pill-active' : 'filter-pill-inactive'}`}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      layout
+    >
+      {children}
+    </motion.button>
+  )
+}
+
+function TransactionRow({ 
+  transaction, 
+  index, 
+  onEdit, 
+  onDelete, 
+  isAdmin,
+  isPending 
+}: { 
+  transaction: Transaction
+  index: number
+  onEdit: (t: Transaction) => void
+  onDelete: (id: string) => void
+  isAdmin: boolean
+  isPending: boolean
+}) {
+  const IconComponent = categoryIcons[transaction.category]
+  const isIncome = transaction.type === 'income'
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleDelete = useCallback(async () => {
+    setIsDeleting(true)
+    // Optimistic UI - delete immediately
+    onDelete(transaction.id)
+  }, [onDelete, transaction.id])
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <motion.div
+        layout
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ 
+          opacity: isPending ? 0.5 : 1, 
+          x: 0,
+          scale: isDeleting ? 0.95 : 1,
+        }}
+        exit={{ opacity: 0, x: 20, height: 0 }}
+        transition={{ duration: 0.3, delay: index * 0.02 }}
+        className={`flex items-center gap-4 p-4 hover:bg-muted/20 transition-all duration-300 group ${
+          isPending ? 'animate-pulse' : ''
+        }`}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <motion.div
+              className={`p-3 rounded-xl cursor-help transition-all duration-300 group-hover:scale-110 ${
+                isIncome ? 'bg-income/20' : 'bg-expense/20'
+              }`}
+              whileHover={{ rotate: 5 }}
+            >
+              <IconComponent
+                className={`w-5 h-5 ${
+                  isIncome ? 'text-income' : 'text-expense'
+                }`}
+              />
+            </motion.div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="glass-card">
+            <div className="space-y-1">
+              <p className="font-medium capitalize">{transaction.category}</p>
+              <p className="text-xs text-muted-foreground">
+                {getCategoryDescription(transaction.category)}
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-foreground truncate group-hover:text-primary transition-colors">
+            {transaction.description}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {formatDate(transaction.date)} • {transaction.category.charAt(0).toUpperCase() + transaction.category.slice(1)}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <motion.div 
+            className="flex items-center gap-1"
+            whileHover={{ scale: 1.05 }}
+          >
+            {isIncome ? (
+              <ArrowUpRight className="w-4 h-4 text-income" />
+            ) : (
+              <ArrowDownRight className="w-4 h-4 text-expense" />
+            )}
+            <span
+              className={`font-semibold ${
+                isIncome ? 'text-income' : 'text-expense'
+              }`}
+            >
+              {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+            </span>
+          </motion.div>
+
+          {isAdmin && (
+            <motion.div 
+              className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <motion.button
+                    onClick={() => onEdit(transaction)}
+                    className="p-2 rounded-lg hover:bg-primary/20 transition-colors"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <Pencil className="w-4 h-4 text-primary" />
+                  </motion.button>
+                </TooltipTrigger>
+                <TooltipContent>Edit transaction</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <motion.button
+                    onClick={handleDelete}
+                    className="p-2 rounded-lg hover:bg-destructive/20 transition-colors"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="w-4 h-4 text-destructive animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    )}
+                  </motion.button>
+                </TooltipTrigger>
+                <TooltipContent>Delete transaction</TooltipContent>
+              </Tooltip>
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    </TooltipProvider>
+  )
+}
+
 export default function TransactionsView() {
   const transactions = useFinanceStore((state) => state.transactions)
   const filters = useFinanceStore((state) => state.filters)
   const setFilters = useFinanceStore((state) => state.setFilters)
+  const resetFilters = useFinanceStore((state) => state.resetFilters)
   const role = useFinanceStore((state) => state.role)
   const deleteTransaction = useFinanceStore((state) => state.deleteTransaction)
+  const pendingTransactions = useFinanceStore((state) => state.pendingTransactions)
 
   const [showFilters, setShowFilters] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+
+  const hasActiveFilters = filters.search || filters.type !== 'all' || filters.category !== 'all'
 
   const filteredTransactions = useMemo(() => {
     let result = [...transactions]
@@ -107,15 +282,24 @@ export default function TransactionsView() {
   }
 
   const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this transaction?')) {
-      deleteTransaction(id)
-    }
+    // Optimistic delete - no confirmation for smoother UX
+    deleteTransaction(id)
   }
 
   const handleModalClose = () => {
     setIsModalOpen(false)
     setEditingTransaction(null)
   }
+
+  const totals = useMemo(() => {
+    const income = filteredTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0)
+    const expense = filteredTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0)
+    return { income, expense, net: income - expense }
+  }, [filteredTransactions])
 
   return (
     <motion.div
@@ -128,21 +312,56 @@ export default function TransactionsView() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Transactions</h2>
-          <p className="text-muted-foreground">Manage your financial activity</p>
+          <p className="text-muted-foreground">
+            {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? 's' : ''} 
+            {hasActiveFilters && ' (filtered)'}
+          </p>
         </div>
         {role === 'admin' && (
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Transaction
-          </Button>
+          <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              className="btn-primary-cta gap-2 px-6"
+            >
+              <Plus className="w-4 h-4" />
+              Add Transaction
+            </Button>
+          </motion.div>
         )}
       </div>
 
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <motion.div 
+          className="glass-card rounded-xl p-4 text-center"
+          whileHover={{ scale: 1.02 }}
+        >
+          <p className="text-xs text-muted-foreground mb-1">Income</p>
+          <p className="text-lg font-bold text-income">{formatCurrency(totals.income)}</p>
+        </motion.div>
+        <motion.div 
+          className="glass-card rounded-xl p-4 text-center"
+          whileHover={{ scale: 1.02 }}
+        >
+          <p className="text-xs text-muted-foreground mb-1">Expenses</p>
+          <p className="text-lg font-bold text-expense">{formatCurrency(totals.expense)}</p>
+        </motion.div>
+        <motion.div 
+          className="glass-card rounded-xl p-4 text-center"
+          whileHover={{ scale: 1.02 }}
+        >
+          <p className="text-xs text-muted-foreground mb-1">Net</p>
+          <p className={`text-lg font-bold ${totals.net >= 0 ? 'text-income' : 'text-expense'}`}>
+            {formatCurrency(totals.net)}
+          </p>
+        </motion.div>
+      </div>
+
       {/* Search and Filters */}
-      <div className="glass-card rounded-2xl p-4">
+      <motion.div 
+        className="glass-card rounded-2xl p-4"
+        layout
+      >
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -150,31 +369,89 @@ export default function TransactionsView() {
               placeholder="Search transactions..."
               value={filters.search}
               onChange={(e) => setFilters({ search: e.target.value })}
-              className="pl-10 bg-muted/50 border-border/50"
+              className="pl-10 bg-muted/50 border-border/50 transition-all focus:ring-2 focus:ring-primary/20"
             />
+            {filters.search && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={() => setFilters({ search: '' })}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                <X className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </motion.button>
+            )}
           </div>
 
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-              className="gap-2 border-border/50 bg-muted/30"
-            >
-              <Filter className="w-4 h-4" />
-              Filters
-              <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`gap-2 border-border/50 transition-all ${
+                      showFilters ? 'bg-primary/10 border-primary/30' : 'bg-muted/30'
+                    }`}
+                  >
+                    <Filter className="w-4 h-4" />
+                    Filters
+                    {hasActiveFilters && (
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    )}
+                    <motion.div
+                      animate={{ rotate: showFilters ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </motion.div>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Toggle filter options</TooltipContent>
+              </Tooltip>
 
-            <Button
-              variant="outline"
-              onClick={() => setFilters({
-                sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc'
-              })}
-              className="gap-2 border-border/50 bg-muted/30"
-            >
-              <ArrowUpDown className="w-4 h-4" />
-              {filters.sortOrder === 'asc' ? 'Oldest' : 'Newest'}
-            </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => setFilters({
+                      sortOrder: filters.sortOrder === 'asc' ? 'desc' : 'asc'
+                    })}
+                    className="gap-2 border-border/50 bg-muted/30 hover:bg-muted/50"
+                  >
+                    <motion.div
+                      animate={{ rotate: filters.sortOrder === 'asc' ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ArrowUpDown className="w-4 h-4" />
+                    </motion.div>
+                    {filters.sortOrder === 'asc' ? 'Oldest' : 'Newest'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Change sort order</TooltipContent>
+              </Tooltip>
+
+              {hasActiveFilters && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={resetFilters}
+                        className="gap-2 text-muted-foreground hover:text-foreground"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reset
+                      </Button>
+                    </motion.div>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear all filters</TooltipContent>
+                </Tooltip>
+              )}
+            </TooltipProvider>
           </div>
         </div>
 
@@ -185,163 +462,118 @@ export default function TransactionsView() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
-              <div className="flex flex-wrap gap-3 pt-4 mt-4 border-t border-border/50">
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Type</label>
-                  <div className="flex gap-2">
-                    {['all', 'income', 'expense'].map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setFilters({ type: type as 'all' | 'income' | 'expense' })}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                          filters.type === type
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </button>
-                    ))}
+              <LayoutGroup>
+                <div className="flex flex-wrap gap-6 pt-4 mt-4 border-t border-border/50">
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground font-medium">Type</label>
+                    <div className="flex gap-2">
+                      {['all', 'income', 'expense'].map((type) => (
+                        <FilterPill
+                          key={type}
+                          active={filters.type === type}
+                          onClick={() => setFilters({ type: type as 'all' | 'income' | 'expense' })}
+                        >
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </FilterPill>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Category</label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setFilters({ category: 'all' })}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        filters.category === 'all'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                      }`}
-                    >
-                      All
-                    </button>
-                    {categories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => setFilters({ category })}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                          filters.category === category
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                        }`}
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground font-medium">Category</label>
+                    <div className="flex flex-wrap gap-2">
+                      <FilterPill
+                        active={filters.category === 'all'}
+                        onClick={() => setFilters({ category: 'all' })}
                       >
-                        {category.charAt(0).toUpperCase() + category.slice(1)}
-                      </button>
-                    ))}
+                        All
+                      </FilterPill>
+                      {categories.map((category) => (
+                        <FilterPill
+                          key={category}
+                          active={filters.category === category}
+                          onClick={() => setFilters({ category })}
+                        >
+                          {category.charAt(0).toUpperCase() + category.slice(1)}
+                        </FilterPill>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Sort By</label>
-                  <div className="flex gap-2">
-                    {['date', 'amount'].map((sort) => (
-                      <button
-                        key={sort}
-                        onClick={() => setFilters({ sortBy: sort as 'date' | 'amount' })}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                          filters.sortBy === sort
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                        }`}
-                      >
-                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
-                      </button>
-                    ))}
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground font-medium">Sort By</label>
+                    <div className="flex gap-2">
+                      {['date', 'amount'].map((sort) => (
+                        <FilterPill
+                          key={sort}
+                          active={filters.sortBy === sort}
+                          onClick={() => setFilters({ sortBy: sort as 'date' | 'amount' })}
+                        >
+                          {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                        </FilterPill>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </LayoutGroup>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
 
       {/* Transactions List */}
-      <div className="glass-card rounded-2xl overflow-hidden">
-        {filteredTransactions.length > 0 ? (
-          <div className="divide-y divide-border/30">
-            {filteredTransactions.map((transaction, index) => {
-              const IconComponent = categoryIcons[transaction.category]
-              const isIncome = transaction.type === 'income'
-
-              return (
-                <motion.div
-                  key={transaction.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.03 }}
-                  className="flex items-center gap-4 p-4 hover:bg-muted/20 transition-colors"
+      <motion.div 
+        className="glass-card rounded-2xl overflow-hidden"
+        layout
+      >
+        <AnimatePresence mode="popLayout">
+          {filteredTransactions.length > 0 ? (
+            <LayoutGroup>
+              <div className="divide-y divide-border/30">
+                {filteredTransactions.map((transaction, index) => (
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                    index={index}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    isAdmin={role === 'admin'}
+                    isPending={pendingTransactions.has(transaction.id)}
+                  />
+                ))}
+              </div>
+            </LayoutGroup>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center py-16 text-muted-foreground"
+            >
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Search className="w-12 h-12 mb-4 opacity-50" />
+              </motion.div>
+              <p className="text-lg font-medium">No transactions found</p>
+              <p className="text-sm mb-4">Try adjusting your search or filters</p>
+              {hasActiveFilters && (
+                <Button
+                  variant="outline"
+                  onClick={resetFilters}
+                  className="gap-2"
                 >
-                  <div
-                    className={`p-3 rounded-xl ${
-                      isIncome ? 'bg-income/20' : 'bg-expense/20'
-                    }`}
-                  >
-                    <IconComponent
-                      className={`w-5 h-5 ${
-                        isIncome ? 'text-income' : 'text-expense'
-                      }`}
-                    />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">
-                      {transaction.description}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(transaction.date)} • {transaction.category.charAt(0).toUpperCase() + transaction.category.slice(1)}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      {isIncome ? (
-                        <ArrowUpRight className="w-4 h-4 text-income" />
-                      ) : (
-                        <ArrowDownRight className="w-4 h-4 text-expense" />
-                      )}
-                      <span
-                        className={`font-semibold ${
-                          isIncome ? 'text-income' : 'text-expense'
-                        }`}
-                      >
-                        {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
-                      </span>
-                    </div>
-
-                    {role === 'admin' && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleEdit(transaction)}
-                          className="p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(transaction.id)}
-                          className="p-2 rounded-lg hover:bg-destructive/20 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Search className="w-12 h-12 mb-4 opacity-50" />
-            <p className="text-lg font-medium">No transactions found</p>
-            <p className="text-sm">Try adjusting your search or filters</p>
-          </div>
-        )}
-      </div>
+                  <RotateCcw className="w-4 h-4" />
+                  Clear Filters
+                </Button>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Transaction Modal */}
       <TransactionModal
